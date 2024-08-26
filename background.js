@@ -1,7 +1,5 @@
 console.log('Biscoti.io background script initialized');
 
-// Rest of the background.js code remains the same
-// Default preferences
 const defaultPreferences = {
   acceptAll: false,
   functionalCookies: true,
@@ -9,17 +7,30 @@ const defaultPreferences = {
   advertisingCookies: false
 };
 
-// Debugging function
 function debugLog(message) {
   console.log(`[Biscoti.io Background]: ${message}`);
 }
 
-// Error logging function
 function errorLog(error) {
   console.error(`[Biscoti.io Error]: ${error.message}`, error);
 }
 
-// Initialize preferences
+function showNotification(message) {
+  console.log(`Attempting to show notification: ${message}`);
+  chrome.notifications.create({
+    type: 'basic',
+    iconUrl: 'icon48.png',
+    title: 'Biscoti.io',
+    message: message
+  }, (notificationId) => {
+    if (chrome.runtime.lastError) {
+      console.error('Notification error:', JSON.stringify(chrome.runtime.lastError));
+    } else {
+      console.log(`Notification created with ID: ${notificationId}`);
+    }
+  });
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   debugLog('Extension installed. Initializing preferences.');
   chrome.storage.sync.set({ preferences: defaultPreferences }, () => {
@@ -31,56 +42,44 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// ... rest of the code remains the same
-  
-  // Listen for messages
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    debugLog(`Received message: ${request.action}`);
-    
-    if (request.action === 'getUserPreferences') {
-      chrome.storage.sync.get('preferences', (data) => {
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'loading' && tab.url && tab.url.match(/^https:\/\/(www\.)?(theguardian|bbc|reuters)\.com/)) {
+    debugLog(`Injecting content script into tab ${tabId}`);
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      files: ['content.js']
+    }).then(() => {
+      debugLog('Content script injected successfully');
+      chrome.tabs.sendMessage(tabId, {action: 'contentScriptCheck'}, (response) => {
         if (chrome.runtime.lastError) {
           errorLog(chrome.runtime.lastError);
-          sendResponse({ error: 'Failed to get preferences' });
         } else {
-          debugLog('Sending user preferences');
-          sendResponse(data.preferences || defaultPreferences);
+          debugLog(`Response from content script: ${JSON.stringify(response)}`);
         }
       });
-      return true; // Indicates we wish to send a response asynchronously
-    } else if (request.action === 'setUserPreferences') {
-      chrome.storage.sync.set({ preferences: request.preferences }, () => {
-        if (chrome.runtime.lastError) {
-          errorLog(chrome.runtime.lastError);
-          sendResponse({ status: 'error', message: 'Failed to set preferences' });
-        } else {
-          debugLog('Preferences updated successfully');
-          sendResponse({ status: 'success' });
-          // Notify all tabs about the preference change
-          chrome.tabs.query({}, (tabs) => {
-            tabs.forEach(tab => {
-              chrome.tabs.sendMessage(tab.id, { action: 'preferencesUpdated' })
-                .catch(error => {
-                  if (error.message !== "Could not establish connection. Receiving end does not exist.") {
-                    errorLog(error);
-                  }
-                });
-            });
-          });
-        }
-      });
-      return true;
-    }
-  });
+    }).catch(err => {
+      errorLog(err);
+    });
+  }
+});
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log(`Received message:`, request);
   
-  // Listen for navigation events to inject content script
-  chrome.webNavigation.onCompleted.addListener((details) => {
-    debugLog(`Navigation completed: ${details.url}`);
-    chrome.tabs.sendMessage(details.tabId, { action: 'checkForConsentForm' })
-      .catch(error => {
-        // This error is expected if the content script is not yet loaded
-        if (error.message !== "Could not establish connection. Receiving end does not exist.") {
-          errorLog(error);
-        }
-      });
-  });
+  if (request.action === 'getUserPreferences') {
+    chrome.storage.sync.get('preferences', (data) => {
+      if (chrome.runtime.lastError) {
+        console.error('Error getting preferences:', JSON.stringify(chrome.runtime.lastError));
+        sendResponse({ error: 'Failed to get preferences' });
+      } else {
+        console.log('Sending user preferences');
+        sendResponse(data.preferences || defaultPreferences);
+      }
+    });
+    return true; // Indicates we wish to send a response asynchronously
+  } else if (request.action === 'showNotification') {
+    console.log('Received showNotification message');
+    showNotification(request.message);
+    sendResponse({status: 'Notification shown'});
+  }
+});

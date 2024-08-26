@@ -7,23 +7,28 @@
       "storage",
       "activeTab",
       "scripting",
-      "webNavigation"
+      "webNavigation",
+      "notifications"
     ],
     "host_permissions": [
-      "<all_urls>"
+      "https://www.theguardian.com/*",
+      "https://www.bbc.com/*",
+      "https://www.reuters.com/*"
     ],
     "background": {
       "service_worker": "background.js"
     },
     "content_scripts": [
       {
-        "matches": ["<all_urls>"],
+        "matches": ["https://www.theguardian.com/*", "https://www.bbc.com/*", "https://www.reuters.com/*"],
         "js": ["content.js"],
-        "run_at": "document_idle"
+        "run_at": "document_end"
       }
     ],
     "action": {
-      "default_popup": "popup/popup.html"
+      "default_popup": "popup.html"
     },
-    "options_page": "options/options.html"
+    "icons": {
+      "48": "icon48.png"
+    }
   }
